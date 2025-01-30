@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault
+  namespace: vault
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault
+  template:
+    metadata:
+      labels:
+        app: vault
+    spec:
+      containers:
+        - name: vault
+          image: hashicorp/vault:latest
+          args:
+            - "server"
+          env:
+            - name: VAULT_DEV_LISTEN_ADDRESS
+              value: "0.0.0.0:8200"
+          ports:
+            - containerPort: 8200
+      initContainers:
+        - name: vault-init
+          image: hashicorp/vault:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Initializing Vault..."
+              vault operator init -format=json > /vault/data/init.json
+              echo "Extracting keys..."
+              jq -r '.unseal_keys_b64[]' /vault/data/init.json | tee /vault/data/unseal-keys.txt
+              echo "Unsealing Vault..."
+              for key in $(cat /vault/data/unseal-keys.txt); do vault operator unseal $key; done
+              echo "Vault is unsealed!"
+          volumeMounts:
+            - name: vault-data
+              mountPath: /vault/data
+      volumes:
+        - name: vault-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault-service
+  namespace: vault
+spec:
+  selector:
+    app: vault
+  ports:
+    - protocol: TCP
+      port: 8200
+      targetPort: 8200
+      nodePort: 30200
+  type: NodePort

@@ -1,2 +1,3 @@
 # sms-skaffold
-A test for deploying a dev env to docker-desktop k8s
+
+This test Skaffold setup deploys NetBox, an SMS service, and HashiCorp Vault into Kubernetes, providing a fully automated infrastructure with secrets management.

@@ -1,0 +1,48 @@
+apiVersion: skaffold/v2beta26
+kind: Config
+metadata:
+  name: dev-deployment
+build:
+  artifacts:
+    - image: custom-sms
+      context: sms/
+      docker:
+        dockerfile: Dockerfile
+deploy:
+  kubectl:
+    manifests:
+      - k8s/namespace.yaml
+      - k8s/netbox.yaml
+      - k8s/sms.yaml
+      - k8s/vault.yaml
+portForward:
+  - resourceType: service
+    resourceName: netbox-service
+    namespace: netbox
+    port: 8000
+    localPort: 8080
+  - resourceType: service
+    resourceName: sms-service
+    namespace: sms
+    port: 8082
+    localPort: 8082
+  - resourceType: service
+    resourceName: vault-service
+    namespace: vault
+    port: 8200
+    localPort: 8200
+profiles:
+  - name: dev
+    build:
+      artifacts:
+        - image: custom-sms
+          context: sms/
+          docker:
+            dockerfile: Dockerfile
+    deploy:
+      kubectl:
+        manifests:
+          - k8s/namespace.yaml
+          - k8s/netbox.yaml
+          - k8s/sms.yaml
+          - k8s/vault.yaml
