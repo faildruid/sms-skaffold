@@ -13,47 +13,74 @@ spec:
       labels:
         app: vault
     spec:
+      securityContext:
+        fsGroup: 1000  # Ensures write permissions for the Vault container
+      volumes:
+        - name: vault-data
+          persistentVolumeClaim:
+            claimName: vault-pvc
+        - name: config-volume
+          configMap:
+            name: vault-config
       containers:
         - name: vault
           image: hashicorp/vault:latest
           args:
             - "server"
+            - "-config=/vault/config/config.hcl"
           env:
-            - name: VAULT_DEV_LISTEN_ADDRESS
-              value: "0.0.0.0:8200"
+            - name: VAULT_ADDR
+              value: "http://0.0.0.0:8200"
           ports:
             - containerPort: 8200
+          securityContext:
+            runAsUser: 1000  # Vault runs as user 1000
+            runAsGroup: 1000  # Ensures Vault has group access
+          volumeMounts:
+            - name: vault-data
+              mountPath: /vault/data  # Writable volume for Vault data
+            - name: config-volume
+              mountPath: /vault/config  # Read-only volume for the config
+              readOnly: true  # Explicitly setting read-only for config
       initContainers:
         - name: vault-init
-          image: hashicorp/vault:latest
+          image: busybox
           command: ["/bin/sh", "-c"]
           args:
             - |
-              echo "Initializing Vault..."
-              vault operator init -format=json > /vault/data/init.json
-              echo "Extracting keys..."
-              jq -r '.unseal_keys_b64[]' /vault/data/init.json | tee /vault/data/unseal-keys.txt
-              echo "Unsealing Vault..."
-              for key in $(cat /vault/data/unseal-keys.txt); do vault operator unseal $key; done
-              echo "Vault is unsealed!"
+              echo "Fixing permissions for Vault data..."
+              chown -R 1000:1000 /vault/data
           volumeMounts:
             - name: vault-data
-              mountPath: /vault/data
-      volumes:
-        - name: vault-data
-          emptyDir: {}
+              mountPath: /vault/data  # Only modifying /vault/data directory
 ---
 apiVersion: v1
-kind: Service
+kind: PersistentVolumeClaim
 metadata:
-  name: vault-service
+  name: vault-pvc
   namespace: vault
 spec:
-  selector:
-    app: vault
-  ports:
-    - protocol: TCP
-      port: 8200
-      targetPort: 8200
-      nodePort: 30200
-  type: NodePort
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-config
+  namespace: vault
+data:
+  config.hcl: |
+    storage "raft" {
+      path    = "/vault/data"
+      node_id = "node1"
+    }
+
+    listener "tcp" {
+      address     = "0.0.0.0:8200"
+      tls_disable = "true"
+    }
+
+    ui = true
