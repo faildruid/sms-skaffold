@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: vault-unseal
+  namespace: vault
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: unseal
+          image: hashicorp/vault:latest
+          command:
+            - "sh"
+            - "-c"
+            - |
+              export VAULT_ADDR=http://vault:8200
+              while [ "$(curl -s -o /dev/null -w "%{http_code}" $VAULT_ADDR/v1/sys/health)" != "501" ]; do
+                echo "Waiting for Vault..."
+                sleep 5
+              done
+              echo "Vault is ready. Unsealing..."
+              UNSEAL_KEYS=$(cat /vault/data/init.json | jq -r '.unseal_keys_b64[]')
+              for key in $UNSEAL_KEYS; do
+                vault operator unseal $key
+              done
